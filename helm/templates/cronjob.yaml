@@ -1,0 +1,66 @@
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: {{ include "vault-oss-backup.fullname" . }}
+  labels:
+    {{- include "vault-oss-backup.labels" . | nindent 4 }}
+spec:
+  successfulJobsHistoryLimit: {{ .Values.backupConfigs.successfulJobsHistoryLimit }}
+  failedJobsHistoryLimit: {{ .Values.backupConfigs.failedJobsHistoryLimit }}
+  concurrencyPolicy: Forbid
+  suspend: false
+  schedule: "{{ .Values.backupConfigs.schedule }}"
+  jobTemplate:
+    spec:
+      backoffLimit: 0
+      template:
+        spec:
+          restartPolicy: Never
+          serviceAccountName: {{ include "vault-oss-backup.serviceAccountName" . }}
+          securityContext:
+            {{- toYaml .Values.podSecurityContext | nindent 12 }}
+          volumes:
+          - name: share
+            emptyDir: {}
+          initContainers:
+          - name: snapshot
+            image: "{{ .Values.image.repository }}:{{ .Values.image.tag | default .Chart.AppVersion }}"
+            imagePullPolicy: {{ .Values.image.pullPolicy }}
+            securityContext:
+              {{- toYaml .Values.securityContext | nindent 14 }}
+            command:
+            - /bin/sh
+            args:
+            - -c
+            - |
+              export VAULT_TOKEN=$(vault write -field=token $VAULT_APPROLE_AUTH_PATH/login role_id=$VAULT_APPROLE_ROLE_ID secret_id=$VAULT_APPROLE_SECRET_ID);
+              vault operator raft snapshot save /share/vault-raft.snap; 
+              if [ $? == 0 ]; then
+                echo "Snapshot completed!"
+              else
+                  >&2 echo "Snapshot failed"
+                  exit 1
+              fi
+            envFrom:
+            - secretRef:
+                name: {{ include "vault-oss-backup.fullname" . }}-approle
+            env:
+            {{- if .Values.env }}
+            {{- toYaml .Values.env | nindent 12 }}
+            {{- end }}
+            volumeMounts:
+            - mountPath: /share
+              name: share
+          containers:
+          - name: upload
+            image: amazon/aws-cli:2.2.14
+            imagePullPolicy: {{ .Values.image.pullPolicy }}
+            securityContext:
+              {{- toYaml .Values.securityContext | nindent 14 }}
+            command: [ "/bin/sh", "-c", 'aws --endpoint-url $MINIO_URL --output json s3 cp /share/vault-raft.snap s3://$MINIO_BUCKET_NAME/${MINIO_BACKUP_FILENAME}_$(date +"%Y%m%d_%H%M%S").snap']
+            envFrom:
+            - secretRef:
+                name: {{ include "vault-oss-backup.fullname" . }}-minio
+            volumeMounts:
+            - mountPath: /share
+              name: share

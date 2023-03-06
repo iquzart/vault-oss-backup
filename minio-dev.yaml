@@ -1,0 +1,105 @@
+---
+kind: Deployment
+apiVersion: apps/v1
+metadata:
+  name: minio
+  namespace: dev-minio
+  labels:
+    app: minio
+    component: minio
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      component: minio
+  template:
+    metadata:
+      labels:
+        component: minio
+    spec:
+      volumes:
+        - name: config
+          persistentVolumeClaim:
+            claimName: minio-config
+        - name: storage
+          persistentVolumeClaim:
+            claimName: minio-storage
+      containers:
+        - name: minio
+          env:
+            - name: MINIO_ROOT_USER
+              value: minio
+            - name: MINIO_ROOT_PASSWORD
+              value: Min10Password
+          ports:
+            - containerPort: 9000
+              protocol: TCP
+          imagePullPolicy: IfNotPresent
+          volumeMounts:
+            - name: config
+              mountPath: /config
+            - name: storage
+              mountPath: /storage
+          terminationMessagePolicy: File
+          image: 'minio/minio:latest'
+          args:
+            - server
+            - /storage
+            - '--config-dir=/config'
+            - '--console-address=:9001'
+      restartPolicy: Always
+  strategy:
+    type: Recreate
+  revisionHistoryLimit: 2
+  progressDeadlineSeconds: 600
+---
+kind: Service
+apiVersion: v1
+metadata:
+  name: minio
+  namespace: dev-minio
+  labels:
+    component: minio
+spec:
+  ports:
+    - name: api
+      protocol: TCP
+      port: 9000
+      targetPort: 9000
+    - name: http
+      protocol: TCP
+      port: 9001
+      targetPort: 9001
+  selector:
+    component: minio
+---
+kind: PersistentVolumeClaim
+apiVersion: v1
+metadata:
+  name: minio-storage
+  namespace: dev-minio
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 3Gi
+  storageClassName: thin
+  volumeMode: Filesystem
+---
+kind: PersistentVolumeClaim
+apiVersion: v1
+metadata:
+  name: minio-config
+  namespace: dev-minio
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 1Gi
+  storageClassName: thin
+  volumeMode: Filesystem
+
+
+

@@ -1,0 +1,53 @@
+# Default values for vault-oss-backup.
+# This is a YAML-formatted file.
+# Declare variables to be passed into your templates.
+
+image:
+  repository: vault
+  pullPolicy: IfNotPresent
+  tag: ""
+
+imagePullSecrets: []
+nameOverride: ""
+fullnameOverride: "vault-backup"
+
+serviceAccount:
+  create: true
+  annotations: {}
+  name: ""
+
+securityContext:
+  capabilities:
+    drop:
+    - ALL
+  readOnlyRootFilesystem: false
+  runAsNonRoot: true
+  # runAsUser: 1000
+
+backupConfigs:
+  schedule: "@every 8h"
+  successfulJobsHistoryLimit: 2
+  failedJobsHistoryLimit: 1
+
+approle:
+  roleId: ""
+  secretId: ""
+  authPath: ""
+
+minio:
+  accessKeyId: ""
+  secretAccesskey: ""
+  region: "uae"
+  url: "http://minio.dev-minio.svc.cluster.local:9000"
+  bucketName: "vault-backup"
+  # Overrides the backup file name whose default is Release name.
+  backupFilename: ""
+
+env:
+  - name: VAULT_ADDR
+    value: "https://dev-vault-active.vault-dev.svc.cluster.local:8200"
+  - name: VAULT_SKIP_VERIFY
+    value: "true"
+
+
+
